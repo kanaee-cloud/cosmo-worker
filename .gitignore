@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+dist/
+
+# Env
+.env
+.env.local
+.env.*.local
+
+# Builds
+build/
+.vercel
+.next
+out/
+
+# IDE
+.vscode
+.idea
+*.suo
+*.ntvs
+*.njsproj
+*.sln
+*.sw?
