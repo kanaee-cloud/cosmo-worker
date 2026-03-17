@@ -8,8 +8,18 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 export const authenticateUser = async (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
 
+  // Debugging: Log all headers (sanitized) to check if Authorization is being stripped
+  console.log(`[AUTH] Incoming headers keys: ${Object.keys(req.headers).join(', ')}`);
+
   if (!authHeader) {
     console.warn(`[AUTH FAILED] No authorization header provided. IP: ${req.ip}`);
+    // Check if it's in a different casing (rare in Node/Express but possible in proxies)
+    const altAuth = req.headers['Authorization'];
+    if (altAuth) {
+        console.log("[AUTH] Found 'Authorization' header with different casing.");
+        // continue logic if needed, but express normally lowercases it
+    }
+    
     return res.status(401).json({ success: false, message: "No authorization header provided" });
   }
 
