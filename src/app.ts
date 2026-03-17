@@ -44,7 +44,7 @@ app.use('/api', workerRoutes);
 
 // Health check
 app.get('/', (req, res) => {
-  res.send('Cosmo AI Worker is Operational. Security protocols active.');
+  res.json({ message: 'Cosmo AI Worker is Operational. Security protocols active.' });
 });
 
 export default app;
