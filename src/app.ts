@@ -30,17 +30,18 @@ app.use(morgan(':method :url :status :res[content-length] - :response-time ms'))
 
 app.use(express.json());
 
-// Custom Logging Middleware for detailed request body (optional, be careful with secrets)
+// Custom Logging Middleware for detailed request body
 app.use((req, res, next) => {
   if (req.method === 'POST') {
     console.log(`[INCOMING REQUEST] ${req.method} ${req.originalUrl}`);
-    // console.log('Body:', JSON.stringify(req.body, null, 2)); // Uncomment for debugging, avoid valid/sensitive data in prod logs
   }
   next();
 });
 
 // Routes
+// Mount both /api and root / to handle different URL structures/rewrites gracefully
 app.use('/api', workerRoutes);
+app.use('/', workerRoutes);
 
 // Health check
 app.get('/', (req, res) => {
