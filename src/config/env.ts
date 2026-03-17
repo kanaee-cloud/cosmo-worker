@@ -14,3 +14,11 @@ export const PORT = process.env.PORT || 3000;
 export const SUPABASE_URL = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL || "";
 export const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || process.env.SUPABASE_KEY || "";
 export const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
+
+// Parse allowed origins from env or use defaults
+export const ALLOWED_ORIGINS = [
+  FRONTEND_URL, 
+  "http://localhost:5173", 
+  "http://localhost:4173", // Vite preview
+  "https://cosmo-frontend.vercel.app"
+].filter(Boolean);

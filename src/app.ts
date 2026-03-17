@@ -2,16 +2,27 @@ import express from 'express';
 import cors from 'cors';
 import morgan from 'morgan';
 import workerRoutes from './routes/workerRoutes';
-import { FRONTEND_URL } from './config/env';
+import { FRONTEND_URL, ALLOWED_ORIGINS } from './config/env';
 
 const app = express();
 
 // Middleware
-// Security: CORS configured to accept only requests from the frontend
+// Security: CORS configured to accept only requests from known frontends
 app.use(cors({
-  origin: [FRONTEND_URL, 'http://localhost:5173', 'https://cosmo-frontend.vercel.app'], // Add your production domains here
-  methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (ALLOWED_ORIGINS.includes(origin) || ALLOWED_ORIGINS.some(allowed => origin.startsWith(allowed))) {
+      return callback(null, true);
+    } else {
+      console.warn(`[CORS BLOCKED] Origin: ${origin}`);
+      return callback(new Error('Not allowed by CORS'));
+    }
+  },
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
 
 // Logging: Expanded logging using Morgan

@@ -1,5 +1,5 @@
 import { genAI } from '../config/env';
-import { GenerateContentRequest, Part } from '@google/generative-ai';
+import { Part } from '@google/generative-ai';
 
 // Helper to fetch image and convert to base64
 async function urlToGenerativePart(url: string, mimeType: string): Promise<Part> {
@@ -14,7 +14,8 @@ async function urlToGenerativePart(url: string, mimeType: string): Promise<Part>
 }
 
 export const generateQuiz = async (missionLog: string, difficulty: string = 'medium') => {
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  // UPGRADE KE GENERASI 1.5 FLASH (Cepat & Akurat)
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   const prompt = `
     You are an AI instructor in a space-themed productivity system.
@@ -33,9 +34,8 @@ export const generateQuiz = async (missionLog: string, difficulty: string = 'med
 
   try {
     const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
-    // Clean up potential markdown code blocks if the model adds them despite instructions
+    const text = result.response.text();
+    // Clean up potential markdown code blocks
     const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
     return JSON.parse(cleanText);
   } catch (error) {
@@ -45,13 +45,13 @@ export const generateQuiz = async (missionLog: string, difficulty: string = 'med
 };
 
 export const validateMissionAndCalculateXP = async (title: string, description: string, imageUrl: string) => {
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  // UPGRADE KE GENERASI 1.5 FLASH (Model ini bisa teks DAN gambar sekaligus)
+  const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
   try {
-    // Determine mime type from extension or default to jpeg (simple approach)
-    // In production, might want 'file-type' package or content-type header from fetch
-    const mimeType = imageUrl.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
+    console.log(`[GEMINI SERVICE] Starting validation for "${title}"`);
     
+    const mimeType = imageUrl.toLowerCase().endsWith('.png') ? 'image/png' : 'image/jpeg';
     const imagePart = await urlToGenerativePart(imageUrl, mimeType);
 
     const prompt = `
@@ -63,7 +63,7 @@ export const validateMissionAndCalculateXP = async (title: string, description: 
       
       Your task:
       1. Analyze the attached image.
-      2. determine if the image is relevant to the mission title and description. Is it valid proof?
+      2. Determine if the image is relevant to the mission title and description. Is it valid proof?
       3. If valid, estimate the difficulty/effort of the task based on the visual evidence and description (Scale 1-10).
       4. Calculate Experience Points (Fuel Cells) to award. Base XP is 100.
          - If heavy/difficult work: Award 150-300 XP.
@@ -81,9 +81,11 @@ export const validateMissionAndCalculateXP = async (title: string, description: 
       Do not include markdown code blocks. Just the raw JSON.
     `;
 
+    // Format pengiriman payload untuk SDK terbaru
     const result = await model.generateContent([prompt, imagePart]);
-    const response = await result.response;
-    const text = response.text();
+    const text = result.response.text();
+    
+    // Pembersihan teks sebelum di-parse menjadi JSON
     const cleanText = text.replace(/```json/g, '').replace(/```/g, '').trim();
     return JSON.parse(cleanText);
   } catch (error) {
