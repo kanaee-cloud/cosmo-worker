@@ -46,105 +46,100 @@ export const handleValidateMission = async (req: Request, res: Response) => {
 
     console.log(`[MISSION VALIDATION] User: ${userId} | Title: "${title}" | Image: ${imageUrl.substring(0, 30)}...`);
 
-    // --- ASYNC MODE (BACKGROUND JOB) ---
-    // Dipicu jika Frontend mengirimkan ID Direktif dan Token Auth
+    // --- SERVERLESS MODE (SYNC) ---
+    // If directive_id is present, we handle it but we MUST await execution on Serverless
+    // Vercel freezes execution after res.json(), so we cannot do fire-and-forget background jobs.
     if (directive_id && authHeader) {
-      console.log(`[ASYNC MODE] Directive ID: ${directive_id}. Queuing background job.`);
+      console.log(`[SERVERLESS MODE] Directive ID: ${directive_id}. Processing synchronously.`);
       
-      // Kirim respons 202 Accepted ke Frontend SECARA CEPAT (Fire and Forget)
-      res.status(202).json({ 
-        success: true, 
-        message: "Validation request queued. Result will be updated automatically." 
-      });
+      try {
+        // 1. Panggil Gemini AI
+        const validationResult = await validateMissionAndCalculateXP(title, description || "", imageUrl);
+        console.log(`[SERVERLESS MODE] Validation Complete. Valid=${validationResult.isValid} | XP=${validationResult.xp_awarded}`);
 
-      // Eksekusi Background Job
-      (async () => {
-        try {
-          console.log(`[BACKGROUND JOB] Starting validation for ${directive_id}...`);
+        const supabase = getSupabaseClient(authHeader);
+        
+        if (validationResult.isValid) {
           
-          // 1. Panggil Gemini AI
-          const validationResult = await validateMissionAndCalculateXP(title, description || "", imageUrl);
-          console.log(`[BACKGROUND JOB] Validation Complete. Valid=${validationResult.isValid} | XP=${validationResult.xp_awarded}`);
+          // LANGKAH 1: Update status Misi di tabel 'directives'
+          const { error: dirError } = await supabase
+            .from('directives')
+            .update({
+              status: 'DONE', 
+              evidence_link: imageUrl
+            })
+            .eq('id', directive_id)
+            .eq('user_id', userId); 
 
-          const supabase = getSupabaseClient(authHeader);
+          if (dirError) console.error(`[SERVERLESS MODE] Directives Update Failed:`, dirError);
+          else console.log(`[SERVERLESS MODE] Directives Updated Successfully.`);
+
+          // LANGKAH 2: Masukkan log AI ke tabel 'mission_journals'
+          const { error: journalError } = await supabase
+            .from('mission_journals')
+            .insert([{
+              directive_id: directive_id,
+              user_id: userId,
+              journal_type: 'IMAGE_VALIDATION',
+              ai_feedback: validationResult.reasoning || "Verified by Cosmo AI.",
+              validation_score: Math.round((validationResult.confidence || 0.8) * 100),
+              bonus_exp: validationResult.xp_awarded || 50,
+              evidence_url: imageUrl
+            }]);
+
+          if (journalError) console.error(`[SERVERLESS MODE] Mission Journals Insert Failed:`, journalError);
+          else console.log(`[SERVERLESS MODE] Journal Log Saved Successfully.`);
+
+          // LANGKAH 3: Tambahkan EXP (Fuel Cells) ke tabel 'users'
+          const { data: userData, error: fetchUserError } = await supabase
+            .from('users')
+            .select('fuel_cells')
+            .eq('id', userId)
+            .single();
           
-          if (validationResult.isValid) {
-            
-            // LANGKAH 1: Update status Misi di tabel 'directives'
-            const { error: dirError } = await supabase
-              .from('directives')
-              .update({
-                status: 'DONE', 
-                evidence_link: imageUrl
-              })
-              .eq('id', directive_id)
-              .eq('user_id', userId); 
-
-            if (dirError) console.error(`[BACKGROUND JOB] Directives Update Failed:`, dirError);
-            else console.log(`[BACKGROUND JOB] Directives Updated Successfully.`);
-
-            // LANGKAH 2: Masukkan log AI ke tabel 'mission_journals'
-            const { error: journalError } = await supabase
-              .from('mission_journals')
-              .insert([{
-                directive_id: directive_id,
-                user_id: userId,
-                journal_type: 'IMAGE_VALIDATION',
-                ai_feedback: validationResult.reasoning || "Verified by Cosmo AI.",
-                validation_score: Math.round((validationResult.confidence || 0.8) * 100),
-                bonus_exp: validationResult.xp_awarded || 50,
-                evidence_url: imageUrl
-              }]);
-
-            if (journalError) console.error(`[BACKGROUND JOB] Mission Journals Insert Failed:`, journalError);
-            else console.log(`[BACKGROUND JOB] Journal Log Saved Successfully.`);
-
-            // LANGKAH 3: Tambahkan EXP (Fuel Cells) ke tabel 'users'
-            const { data: userData, error: fetchUserError } = await supabase
-              .from('users')
-              .select('fuel_cells')
-              .eq('id', userId)
-              .single();
-            
-            if (fetchUserError) {
-              console.error(`[BACKGROUND JOB] Failed to fetch current Fuel Cells:`, fetchUserError);
-            } else {
-              const currentFuel = userData?.fuel_cells || 0;
-              const newFuel = currentFuel + (validationResult.xp_awarded || 50);
-
-              const { error: userError } = await supabase
-                .from('users')
-                .update({ fuel_cells: newFuel })
-                .eq('id', userId);
-              
-              if (userError) {
-                console.error(`[BACKGROUND JOB] Failed to update Fuel Cells:`, userError);
-              } else {
-                console.log(`[BACKGROUND JOB] Success! Captain awarded ${validationResult.xp_awarded} FC. Total FC: ${newFuel}`);
-              }
-            }
-
+          if (fetchUserError) {
+            console.error(`[SERVERLESS MODE] Failed to fetch current Fuel Cells:`, fetchUserError);
           } else {
-            // JIKA AI MENOLAK GAMBAR BUKTI (INVALID)
-             const { error: rejectError } = await supabase
-              .from('mission_journals')
-              .insert([{
-                directive_id: directive_id,
-                user_id: userId,
-                journal_type: 'IMAGE_VALIDATION',
-                ai_feedback: `[VALIDATION REJECTED] ${validationResult.reasoning || "Evidence does not match parameters."}`,
-                validation_score: 0,
-                bonus_exp: 0,
-                evidence_url: imageUrl
-              }]);
-              
-             if(rejectError) console.error("[BACKGROUND JOB] Failed to log rejection:", rejectError);
-             console.log(`[BACKGROUND JOB] Mission marked as invalid and logged.`);
+            const currentFuel = userData?.fuel_cells || 0;
+            const newFuel = (parseInt(currentFuel) || 0) + (validationResult.xp_awarded || 50);
+
+            const { error: userError } = await supabase
+              .from('users')
+              .update({ fuel_cells: newFuel })
+              .eq('id', userId);
+            
+            if (userError) {
+              console.error(`[SERVERLESS MODE] Failed to update Fuel Cells:`, userError);
+            } else {
+              console.log(`[SERVERLESS MODE] Success! Captain awarded ${validationResult.xp_awarded} FC. Total FC: ${newFuel}`);
+            }
           }
-        } catch (bgError) {
-          console.error(`[BACKGROUND JOB] Error:`, bgError);
+
+        } else {
+          // JIKA AI MENOLAK GAMBAR BUKTI (INVALID)
+           const { error: rejectError } = await supabase
+            .from('mission_journals')
+            .insert([{
+              directive_id: directive_id,
+              user_id: userId,
+              journal_type: 'IMAGE_VALIDATION',
+              ai_feedback: `[VALIDATION REJECTED] ${validationResult.reasoning || "Evidence does not match parameters."}`,
+              validation_score: 0,
+              bonus_exp: 0,
+              evidence_url: imageUrl
+            }]);
+            
+           if(rejectError) console.error("[SERVERLESS MODE] Failed to log rejection:", rejectError);
+           console.log(`[SERVERLESS MODE] Mission marked as invalid and logged.`);
         }
-      })();
+
+        // Return final result to client
+        res.json({ success: true, result: validationResult });
+        
+      } catch (bgError) {
+        console.error(`[SERVERLESS MODE] Error:`, bgError);
+        res.status(500).json({ success: false, message: "Serverless validation failed" });
+      }
       
       return; 
     }

@@ -41,7 +41,7 @@ app.use((req, res, next) => {
 // Routes
 // Mount both /api and root / to handle different URL structures/rewrites gracefully
 app.use('/api', workerRoutes);
-app.use('/', workerRoutes);
+// app.use('/', workerRoutes);
 
 // Health check
 app.get('/', (req, res) => {
